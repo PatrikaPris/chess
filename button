@@ -1,0 +1,227 @@
+// App.js
+// Simple mobile chess app (React Native + Expo)
+// Features: local pass-and-play (two players on one device), legal move highlighting,
+// move history, restart. Promotion defaults to queen (UI for choosing promotion can be added later).
+// Dependencies: chess.js (npm install chess.js)
+
+import React, { useState, useRef, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, SafeAreaView, ScrollView, Alert } from 'react-native';
+import { Chess } from 'chess.js';
+
+const FILES = ['a','b','c','d','e','f','g','h'];
+
+// Unicode pieces for a lightweight UI
+// NOTE: use proper JavaScript comment syntax (no `#` comments)
+// Piece themes
+const PIECE_UNICODE_CLASSIC = {
+  w: { p: '♙', r: '♖', n: '♘', b: '♗', q: '♕', k: '♔' },
+  b: { p: '♟', r: '♜', n: '♞', b: '♝', q: '♛', k: '♚' }
+};
+
+// Alternate theme (simple geometric style or another Unicode set)
+const PIECE_UNICODE_ALT = {
+  w: { p: '⚪', r: '⬜', n: '🔷', b: '🔺', q: '⭐', k: '👑' },
+  b: { p: '⚫', r: '⬛', n: '🔶', b: '🔻', q: '✴️', k: '💀' }
+};
+
+// State variable controls active piece theme (can expand with more themes)
+// To switch themes, update this state via a button
+const [pieceTheme, setPieceTheme] = useState('classic');
+const PIECE_UNICODE = pieceTheme === 'classic' ? PIECE_UNICODE_CLASSIC : PIECE_UNICODE_ALT;
+
+export default function App() {
+  const chessRef = useRef(new Chess());
+  const [selectedSquare, setSelectedSquare] = useState(null);
+  const [legalMoves, setLegalMoves] = useState([]);
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    setHistory(chessRef.current.history({ verbose: true }));
+  }, []);
+
+  function resetGame() {
+    chessRef.current = new Chess();
+    setSelectedSquare(null);
+    setLegalMoves([]);
+    setHistory([]);
+  }
+
+  function onSquarePress(square) {
+    const chess = chessRef.current;
+
+    // If nothing is selected yet, try to select a piece
+    if (!selectedSquare) {
+      const piece = chess.get(square);
+      if (!piece) return; // empty square
+      // Only allow selecting a piece of the side to move
+      if (piece.color !== chess.turn()) return;
+      setSelectedSquare(square);
+      const moves = chess.moves({ square, verbose: true }).map(m => m.to);
+      setLegalMoves(moves);
+      return;
+    }
+
+    // If clicked the same square, clear selection
+    if (selectedSquare === square) {
+      setSelectedSquare(null);
+      setLegalMoves([]);
+      return;
+    }
+
+    // Attempt to make a move
+    const moves = chess.moves({ square: selectedSquare, verbose: true });
+    const matching = moves.find(m => m.to === square);
+    if (!matching) {
+      // If user clicked another piece of same color, switch selection
+      const piece = chess.get(square);
+      if (piece && piece.color === chess.turn()) {
+        setSelectedSquare(square);
+        setLegalMoves(chess.moves({ square, verbose: true }).map(m => m.to));
+        return;
+      }
+      // invalid target, clear selection
+      setSelectedSquare(null);
+      setLegalMoves([]);
+      return;
+    }
+
+    // Build move object; handle promotion default to queen
+    const moveObj = { from: selectedSquare, to: square };
+    if (matching.promotion) moveObj.promotion = 'q';
+
+    const result = chess.move(moveObj);
+    if (result) {
+      setHistory(chess.history({ verbose: true }));
+      setSelectedSquare(null);
+      setLegalMoves([]);
+
+      // Check endgame conditions
+      if (chess.game_over()) {
+        if (chess.in_checkmate()) {
+          Alert.alert('Checkmate', `${result.color === 'w' ? 'White' : 'Black'} wins`);
+        } else if (chess.in_stalemate()) {
+          Alert.alert('Draw', 'Stalemate');
+        } else if (chess.in_threefold_repetition()) {
+          Alert.alert('Draw', 'Threefold repetition');
+        } else if (chess.insufficient_material()) {
+          Alert.alert('Draw', 'Insufficient material');
+        } else {
+          Alert.alert('Game over');
+        }
+      }
+    }
+  }
+
+  // Render 8x8 board (chess.js board() returns ranks from 8 to 1)
+  function renderBoard() {
+    const board = chessRef.current.board();
+    return (
+    <View style={styles.container}>
+      {/* Red button shown only after game over */}
+      {gameOver && (
+        <TouchableOpacity
+          style={{ backgroundColor: 'red', padding: 12, borderRadius: 8, marginBottom: 12 }}
+          onPress={resetGame}
+        >
+          <Text style={{ color: 'white', fontWeight: 'bold', textAlign: 'center' }}>
+            Restart Game
+          </Text>
+        </TouchableOpacity>
+      )}
+      <View style={styles.board}>
+        {board.map((rankArray, rankIdx) => {
+          const rank = 8 - rankIdx;
+          return (
+            <View key={`rank-${rank}`} style={styles.rankRow}>
+              {rankArray.map((squareObj, fileIdx) => {
+                const file = FILES[fileIdx];
+                const square = `${file}${rank}`;
+                const isDark = (fileIdx + rank) % 2 === 0;
+                const isSelected = selectedSquare === square;
+                const isLegal = legalMoves.includes(square);
+                const piece = squareObj ? PIECE_UNICODE[squareObj.color][squareObj.type] : null;
+
+                return (
+                  <TouchableOpacity
+                    key={square}
+                    style={[
+                      styles.square,
+                      isDark ? styles.darkSquare : styles.lightSquare,
+                      isSelected && styles.selectedSquare,
+                      isLegal && styles.legalSquare
+                    ]}
+                    onPress={() => onSquarePress(square)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.pieceText}>{piece}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          );
+        })}
+      </View>
+    );
+  }
+
+  function renderMoveHistory() {
+    if (!history.length) return <Text style={styles.emptyHistory}>No moves yet</Text>;
+
+    // Group moves by full move number for readability
+    const pairs = [];
+    for (let i = 0; i < history.length; i += 2) {
+      const white = history[i];
+      const black = history[i + 1];
+      pairs.push({ move: Math.floor(i / 2) + 1, white: white ? white.san : '', black: black ? black.san : '' });
+    }
+
+    return (
+      <ScrollView style={styles.historyBox}>
+        {pairs.map(p => (
+          <Text key={`hist-${p.move}`} style={styles.historyText}>
+            {p.move}. {p.white} {p.black}
+          </Text>
+        ))}
+      </ScrollView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <Text style={styles.title}>Local Chess (Pass & Play)</Text>
+      <View style={styles.contentRow}>
+        {renderBoard()}
+        <View style={styles.sidePanel}>
+          <Text style={styles.turnText}>Turn: {chessRef.current.turn() === 'w' ? 'White' : 'Black'}</Text>
+          <TouchableOpacity style={styles.button} onPress={resetGame}>
+            <Text style={styles.buttonText}>Restart</Text>
+          </TouchableOpacity>
+          <Text style={styles.sectionTitle}>Move History</Text>
+          {renderMoveHistory()}
+        </View>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#f3f4f6', padding: 12 },
+  title: { fontSize: 20, fontWeight: '600', marginBottom: 8, textAlign: 'center' },
+  contentRow: { flex: 1, flexDirection: 'row' },
+  board: { width: 320, aspectRatio: 1, borderWidth: 2, borderColor: '#111', marginRight: 12 },
+  rankRow: { flex: 1, flexDirection: 'row' },
+  square: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  darkSquare: { backgroundColor: '#b58863' },
+  lightSquare: { backgroundColor: '#f0d9b5' },
+  selectedSquare: { borderWidth: 2, borderColor: '#ffd700' },
+  legalSquare: { borderWidth: 2, borderColor: '#00aaff' },
+  pieceText: { fontSize: 28 },
+  sidePanel: { flex: 1 },
+  turnText: { fontSize: 16, marginBottom: 8 },
+  button: { backgroundColor: '#111827', padding: 8, borderRadius: 6, marginBottom: 12 },
+  buttonText: { color: '#fff', textAlign: 'center', fontWeight: '600' },
+  sectionTitle: { fontSize: 16, marginBottom: 6 },
+  historyBox: { flex: 1, backgroundColor: '#fff', padding: 8, borderRadius: 6 },
+  historyText: { fontSize: 14, paddingVertical: 2 },
+  emptyHistory: { fontStyle: 'italic', color: '#6b7280' }
+});
