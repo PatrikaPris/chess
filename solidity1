@@ -1,0 +1,562 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+/**
+ * OnChainChess.sol
+ *
+ * A simplified on-chain chess engine (demonstration).
+ * This contract stores the full board on-chain, enforces turn order,
+ * validates most moves, detects check and checkmate by brute-force legal move search.
+ *
+ * IMPORTANT LIMITATIONS (explicit):
+ *  - Castling is NOT implemented.
+ *  - En-passant is NOT implemented.
+ *  - Fifty-move rule, threefold repetition, and draw by agreement NOT implemented.
+ *  - Move generation is reasonably complete for normal moves, pawn double-move, captures and promotion.
+ *  - Promotion requires passing a promotion piece character ('q','r','b','n' for white uppercase; 'Q'... for black) as appropriate.
+ *  - This contract is intended as a demonstration/educational starting point; it is NOT gas-optimized.
+ *
+ * Representation:
+ *  - Board is a 64-length bytes1 array, indexed 0..63, where index 0 == a1, index 7 == h1, index 56 == a8.
+ *  - White pieces: 'P','R','N','B','Q','K' (uppercase)
+ *  - Black pieces: 'p','r','n','b','q','k' (lowercase)
+ *  - Empty square: '.'
+ */
+
+contract OnChainChess {
+    // Board: 0..63, 0=a1, 1=b1 ... 7=h1, 8=a2 ... 63=h8
+    bytes1[64] public board;
+
+    // true == white to move, false == black to move
+    bool public whiteToMove;
+
+    // Game over flag and winner: 0 = ongoing, 1 = white wins, 2 = black wins, 3 = draw
+    uint8 public gameResult;
+
+    event MovePlayed(address indexed by, uint8 from, uint8 to, bytes1 promotion);
+    event GameOver(uint8 result);
+
+    constructor() {
+        _initStartingPosition();
+        whiteToMove = true;
+        gameResult = 0;
+    }
+
+    // ----------------------------
+    // Public API
+    // ----------------------------
+
+    /**
+     * Get piece at index
+     */
+    function pieceAt(uint8 idx) public view returns (bytes1) {
+        require(idx < 64, "index out of range");
+        return board[idx];
+    }
+
+    /**
+     * Play a move from 'from' index to 'to' index. Optionally pass promotion piece ('.' if none).
+     * This enforces turn order and basic move legality. Reverts on illegal move.
+     */
+    function move(uint8 from, uint8 to, bytes1 promotion) public {
+        require(gameResult == 0, "game over");
+        require(from < 64 && to < 64, "index out of bounds");
+
+        bytes1 p = board[from];
+        require(p != bytes1('.'), "no piece at from");
+
+        bool isWhitePiece = _isUpper(p);
+        if (whiteToMove) {
+            require(isWhitePiece, "not white's piece");
+        } else {
+            require(!isWhitePiece, "not black's piece");
+        }
+
+        // Verify legality
+        require(_isLegalMove(from, to, promotion), "illegal move");
+
+        // Make move on a copy, then ensure own king not left in check
+        bytes1[64] memory snapshot = board;
+        _applyMoveOnBoard(from, to, promotion);
+
+        // If move leaves own king in check -> revert
+        if (_isInCheck(whiteToMove ? 'w' : 'b')) {
+            // restore board
+            board = snapshot;
+            revert("move would leave king in check");
+        }
+
+        // Successful move
+        emit MovePlayed(msg.sender, from, to, promotion);
+
+        // Change turn
+        whiteToMove = !whiteToMove;
+
+        // Check endgame
+        _maybeFinalizeGame();
+    }
+
+    /**
+     * Resign the game. Caller may be any address; this simply flags the opposite side as winner.
+     */
+    function resign(bool resignsWhite) public {
+        require(gameResult == 0, "game over");
+        if (resignsWhite) {
+            gameResult = 2; // black wins
+            emit GameOver(gameResult);
+        } else {
+            gameResult = 1; // white wins
+            emit GameOver(gameResult);
+        }
+    }
+
+    // ----------------------------
+    // Internal helpers
+    // ----------------------------
+
+    function _initStartingPosition() internal {
+        // rank 1
+        board[0] = 'R'; board[1] = 'N'; board[2] = 'B'; board[3] = 'Q'; board[4] = 'K'; board[5] = 'B'; board[6] = 'N'; board[7] = 'R';
+        // rank 2
+        for (uint8 i = 8; i < 16; i++) board[i] = 'P';
+        // ranks 3..6
+        for (uint8 i = 16; i < 48; i++) board[i] = '.';
+        // rank 7
+        for (uint8 i = 48; i < 56; i++) board[i] = 'p';
+        // rank 8
+        board[56] = 'r'; board[57] = 'n'; board[58] = 'b'; board[59] = 'q'; board[60] = 'k'; board[61] = 'b'; board[62] = 'n'; board[63] = 'r';
+    }
+
+    function _applyMoveOnBoard(uint8 from, uint8 to, bytes1 promotion) internal {
+        bytes1 p = board[from];
+        // Pawn promotion handling
+        if (p == 'P' && _rankOfIndex(to) == 8) {
+            require(promotion != bytes1('.'), "must provide promotion piece");
+            board[to] = promotion; // caller must provide uppercase piece like 'Q','R','B','N'
+            board[from] = '.';
+            return;
+        }
+        if (p == 'p' && _rankOfIndex(to) == 1) {
+            require(promotion != bytes1('.'), "must provide promotion piece");
+            board[to] = promotion; // caller must provide lowercase like 'q','r','b','n'
+            board[from] = '.';
+            return;
+        }
+
+        // Normal move/capture
+        board[to] = board[from];
+        board[from] = '.';
+    }
+
+    function _maybeFinalizeGame() internal {
+        // after a move, check whether side to move has any legal moves
+        bool side = whiteToMove; // next side to move
+        bool hasMoves = _hasAnyLegalMove(side);
+        if (!hasMoves) {
+            // no legal moves -> checkmate or stalemate
+            bool inCheck = _isInCheck(side ? 'w' : 'b');
+            if (inCheck) {
+                // checkmate
+                gameResult = side ? 2 : 1; // the side that just moved wins
+            } else {
+                // stalemate -> draw
+                gameResult = 3;
+            }
+            emit GameOver(gameResult);
+        }
+    }
+
+    // Check whether given color is in check
+    // colorChar: 'w' or 'b'
+    function _isInCheck(bytes1 colorChar) internal view returns (bool) {
+        // find king
+        bytes1 kingChar = colorChar == 'w' ? bytes1('K') : bytes1('k');
+        int16 kingIdx = -1;
+        for (uint8 i = 0; i < 64; i++) {
+            if (board[i] == kingChar) { kingIdx = int16(uint16(i)); break; }
+        }
+        if (kingIdx == -1) return false; // no king? shouldn't happen
+
+        // Are any opponent pieces attacking king square?
+        bytes1 opponentColor = colorChar == 'w' ? bytes1('b') : bytes1('w');
+        return _isSquareAttacked(uint8(kingIdx), opponentColor);
+    }
+
+    // Determine if square idx is attacked by color ('w' or 'b')
+    function _isSquareAttacked(uint8 idx, bytes1 attackerColor) internal view returns (bool) {
+        // Scan all squares; if a piece of attackerColor can legally move (as a capture) to idx, then attacked.
+        for (uint8 i = 0; i < 64; i++) {
+            bytes1 p = board[i];
+            if (p == bytes1('.')) continue;
+            if (attackerColor == 'w' && !_isUpper(p)) continue;
+            if (attackerColor == 'b' && _isUpper(p)) continue;
+
+            if (_canPieceAttack(i, idx)) return true;
+        }
+        return false;
+    }
+
+    // can piece at 'from' attack target 'to' (ignoring king-in-check ramifications)
+    function _canPieceAttack(uint8 from, uint8 to) internal view returns (bool) {
+        bytes1 p = board[from];
+        if (p == bytes1('.')) return false;
+        bytes1 lower = _toLower(p);
+
+        if (lower == 'p') {
+            // pawn attack depends on color
+            if (_isUpper(p)) {
+                // white pawn attacks one up-left or up-right
+                (int8 fr, int8 ff) = _rankFile(from);
+                (int8 tr, int8 tf) = _rankFile(to);
+                if (tr == fr + 1 && (tf == ff + 1 || tf == ff - 1)) return true;
+                return false;
+            } else {
+                // black pawn attacks one down-left or down-right
+                (int8 fr, int8 ff) = _rankFile(from);
+                (int8 tr, int8 tf) = _rankFile(to);
+                if (tr == fr - 1 && (tf == ff + 1 || tf == ff - 1)) return true;
+                return false;
+            }
+        }
+
+        if (lower == 'n') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            int8 dr = tr - fr;
+            int8 df = tf - ff;
+            if ((abs(dr) == 2 && abs(df) == 1) || (abs(dr) == 1 && abs(df) == 2)) return true;
+            return false;
+        }
+
+        if (lower == 'b' || lower == 'q') {
+            // bishop-like attacks
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            if (abs(tr - fr) == abs(tf - ff) && _isClearPath(from, to)) return true;
+        }
+
+        if (lower == 'r' || lower == 'q') {
+            // rook-like attacks
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            if ((tr == fr || tf == ff) && _isClearPath(from, to)) return true;
+        }
+
+        if (lower == 'k') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            if (abs(tr - fr) <= 1 && abs(tf - ff) <= 1) return true;
+            return false;
+        }
+
+        return false;
+    }
+
+    // Check if path between from and to (exclusive) is clear (no pieces) for sliding pieces
+    function _isClearPath(uint8 from, uint8 to) internal view returns (bool) {
+        (int8 fr, int8 ff) = _rankFile(from);
+        (int8 tr, int8 tf) = _rankFile(to);
+        int8 dr = tr - fr;
+        int8 df = tf - ff;
+
+        int8 stepR = dr == 0 ? int8(0) : (dr > 0 ? int8(1) : int8(-1));
+        int8 stepF = df == 0 ? int8(0) : (df > 0 ? int8(1) : int8(-1));
+
+        int8 r = fr + stepR;
+        int8 f = ff + stepF;
+        while (r != tr || f != tf) {
+            uint8 idx = _indexOf(uint8(r), uint8(f));
+            if (board[idx] != bytes1('.')) return false;
+            r += stepR;
+            f += stepF;
+        }
+        return true;
+    }
+
+    // Validate a move from->to for current position (checks basic piece movement, captures, pawn moves including double-step)
+    // Does NOT check leaving own king in check here (caller does that by applying and verifying)
+    function _isLegalMove(uint8 from, uint8 to, bytes1 promotion) internal view returns (bool) {
+        bytes1 p = board[from];
+        if (p == bytes1('.')) return false;
+        if (from == to) return false;
+
+        bytes1 target = board[to];
+        bool sameColor = (target != bytes1('.')) && (_isUpper(target) == _isUpper(p));
+        if (sameColor) return false; // cannot capture own piece
+
+        bytes1 lower = _toLower(p);
+
+        if (lower == 'p') {
+            // Pawn moves
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            int8 dr = tr - fr;
+            int8 df = tf - ff;
+
+            if (_isUpper(p)) {
+                // white pawn forward
+                if (df == 0) {
+                    // forward move
+                    if (dr == 1 && target == bytes1('.')) return true;
+                    if (dr == 2 && fr == 2) {
+                        // double move from rank 2; ensure both squares empty
+                        uint8 between = _indexOf(uint8(fr + 1), uint8(ff));
+                        if (board[between] == bytes1('.') && target == bytes1('.')) return true;
+                    }
+                } else if (abs(df) == 1 && dr == 1) {
+                    // capture
+                    if (target != bytes1('.') && !_isUpper(target)) return true;
+                }
+                // promotion handled in _applyMoveOnBoard by requiring promotion param on reaching rank 8
+                return false;
+            } else {
+                // black pawn
+                if (df == 0) {
+                    if (dr == -1 && target == bytes1('.')) return true;
+                    if (dr == -2 && fr == 7) {
+                        uint8 between = _indexOf(uint8(fr - 1), uint8(ff));
+                        if (board[between] == bytes1('.') && target == bytes1('.')) return true;
+                    }
+                } else if (abs(df) == 1 && dr == -1) {
+                    if (target != bytes1('.') && _isUpper(target)) return true;
+                }
+                return false;
+            }
+        }
+
+        if (lower == 'n') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            int8 dr = tr - fr;
+            int8 df = tf - ff;
+            if ((abs(dr) == 2 && abs(df) == 1) || (abs(dr) == 1 && abs(df) == 2)) return true;
+            return false;
+        }
+
+        if (lower == 'b') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            if (abs(tr - fr) == abs(tf - ff) && _isClearPath(from, to)) return true;
+            return false;
+        }
+
+        if (lower == 'r') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            if ((tr == fr || tf == ff) && _isClearPath(from, to)) return true;
+            return false;
+        }
+
+        if (lower == 'q') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            if (((tr == fr || tf == ff) || (abs(tr - fr) == abs(tf - ff))) && _isClearPath(from, to)) return true;
+            return false;
+        }
+
+        if (lower == 'k') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            if (abs(tr - fr) <= 1 && abs(tf - ff) <= 1) {
+                // also ensure target square is not attacked by opponent (cannot move into check)
+                // but we do full king-in-check test after applying move, so allow here
+                return true;
+            }
+            // Note: castling not supported
+            return false;
+        }
+
+        return false;
+    }
+
+    // Determine if side has any legal move
+    function _hasAnyLegalMove(bool forWhite) internal view returns (bool) {
+        bytes1 colorChar = forWhite ? bytes1('w') : bytes1('b');
+        for (uint8 i = 0; i < 64; i++) {
+            bytes1 p = board[i];
+            if (p == bytes1('.')) continue;
+            if (forWhite != _isUpper(p)) continue;
+
+            // iterate all target squares and test legality and resulting king safety
+            for (uint8 j = 0; j < 64; j++) {
+                // quick check of move shape
+                if (!_isLegalMove(i, j, bytes1('.'))) continue;
+
+                // simulate move on local copy
+                bytes1[64] memory snap = board;
+                // apply copy of move
+                bytes1 moving = snap[i];
+                snap[j] = moving;
+                snap[i] = '.';
+
+                // find king position for 'forWhite'
+                bytes1 kingChar = forWhite ? bytes1('K') : bytes1('k');
+                int16 kingIdx = -1;
+                for (uint8 k = 0; k < 64; k++) {
+                    if (snap[k] == kingChar) { kingIdx = int16(uint16(k)); break; }
+                }
+                if (kingIdx == -1) return true; // missing king (shouldn't happen) => treat as legal to avoid false mate
+
+                // check whether any opponent piece attacks king in the snap
+                bool opponentIsWhite = !forWhite;
+                bool attacked = false;
+                for (uint8 k = 0; k < 64 && !attacked; k++) {
+                    bytes1 op = snap[k];
+                    if (op == bytes1('.')) continue;
+                    if (opponentIsWhite != _isUpper(op)) continue;
+
+                    if (_canPieceAttackOnBoard(k, uint8(kingIdx), snap)) attacked = true;
+                }
+
+                if (!attacked) return true; // found a legal move
+            }
+        }
+        return false;
+    }
+
+    // Same as _canPieceAttack but uses a provided board snapshot
+    function _canPieceAttackOnBoard(uint8 from, uint8 to, bytes1[64] memory snap) internal pure returns (bool) {
+        bytes1 p = snap[from];
+        if (p == bytes1('.')) return false;
+        bytes1 lower = _toLower(p);
+
+        if (lower == 'p') {
+            if (_isUpper(p)) {
+                (int8 fr, int8 ff) = _rankFile(from);
+                (int8 tr, int8 tf) = _rankFile(to);
+                if (tr == fr + 1 && (tf == ff + 1 || tf == ff - 1)) return true;
+                return false;
+            } else {
+                (int8 fr, int8 ff) = _rankFile(from);
+                (int8 tr, int8 tf) = _rankFile(to);
+                if (tr == fr - 1 && (tf == ff + 1 || tf == ff - 1)) return true;
+                return false;
+            }
+        }
+
+        if (lower == 'n') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            int8 dr = tr - fr;
+            int8 df = tf - ff;
+            if ((abs(dr) == 2 && abs(df) == 1) || (abs(dr) == 1 && abs(df) == 2)) return true;
+            return false;
+        }
+
+        if (lower == 'b' || lower == 'q') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            if (abs(tr - fr) == abs(tf - ff) && _isClearPathOnBoard(from, to, snap)) return true;
+        }
+
+        if (lower == 'r' || lower == 'q') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            if ((tr == fr || tf == ff) && _isClearPathOnBoard(from, to, snap)) return true;
+        }
+
+        if (lower == 'k') {
+            (int8 fr, int8 ff) = _rankFile(from);
+            (int8 tr, int8 tf) = _rankFile(to);
+            if (abs(tr - fr) <= 1 && abs(tf - ff) <= 1) return true;
+            return false;
+        }
+
+        return false;
+    }
+
+    // Clear path check on a provided board snapshot
+    function _isClearPathOnBoard(uint8 from, uint8 to, bytes1[64] memory snap) internal pure returns (bool) {
+        (int8 fr, int8 ff) = _rankFile(from);
+        (int8 tr, int8 tf) = _rankFile(to);
+        int8 dr = tr - fr;
+        int8 df = tf - ff;
+
+        int8 stepR = dr == 0 ? int8(0) : (dr > 0 ? int8(1) : int8(-1));
+        int8 stepF = df == 0 ? int8(0) : (df > 0 ? int8(1) : int8(-1));
+
+        int8 r = fr + stepR;
+        int8 f = ff + stepF;
+        while (r != tr || f != tf) {
+            uint8 idx = _indexOf(uint8(r), uint8(f));
+            if (snap[idx] != bytes1('.')) return false;
+            r += stepR;
+            f += stepF;
+        }
+        return true;
+    }
+
+    // Helper to compute index from rank (1..8) and file (0..7)
+    function _indexOf(uint8 rank, uint8 file) internal pure returns (uint8) {
+        // rank: 1..8, file: 0..7 (a..h)
+        return uint8((rank - 1) * 8 + file);
+    }
+
+    // Convert index to rank and file
+    function _rankFile(uint8 idx) internal pure returns (int8 rank, int8 file) {
+        rank = int8(int32(idx / 8) + 1); // 1..8
+        file = int8(int32(idx % 8)); // 0..7
+    }
+
+    function _rankOfIndex(uint8 idx) internal pure returns (uint8) {
+        return uint8(idx / 8 + 1);
+    }
+
+    // small utilities
+    function _isUpper(bytes1 b) internal pure returns (bool) {
+        return b >= 'A' && b <= 'Z';
+    }
+    function _toLower(bytes1 b) internal pure returns (bytes1) {
+        if (_isUpper(b)) return bytes1(uint8(b) + 32);
+        return b;
+    }
+
+    function abs(int8 x) internal pure returns (int8) {
+        return x < 0 ? -x : x;
+    }
+
+    // ----------------------------
+    // Simple test helpers (can be invoked off-chain via call)
+    // ----------------------------
+
+    /**
+     * Execute a sequence of moves (for testing) given arrays of from/to and promotions
+     * This bypasses access control and is intended for testing only.
+     */
+    function runMoves(uint8[] calldata froms, uint8[] calldata tos, bytes1[] calldata promotions) public {
+        require(froms.length == tos.length && tos.length == promotions.length, "length mismatch");
+        // reset the board for a fresh test
+        _initStartingPosition();
+        whiteToMove = true;
+        gameResult = 0;
+
+        for (uint i = 0; i < froms.length; i++) {
+            uint8 f = froms[i];
+            uint8 t = tos[i];
+            bytes1 prom = promotions[i];
+            // perform move (will revert if illegal)
+            // we call internal functions to avoid require messages being noisy for tests
+            bytes1 p = board[f];
+            require(p != bytes1('.'), "no piece at from in test");
+            require(whiteToMove == _isUpper(p), "turn mismatch in test");
+            require(_isLegalMove(f, t, prom), "illegal move in test");
+            bytes1[64] memory snap = board;
+            _applyMoveOnBoard(f, t, prom);
+            if (_isInCheck(whiteToMove ? 'w' : 'b')) {
+                board = snap; revert("move would leave king in check in test");
+            }
+            whiteToMove = !whiteToMove;
+            _maybeFinalizeGame();
+            if (gameResult != 0) break;
+        }
+    }
+
+    /**
+     * Readable helper that returns a FEN-like simple string (not full FEN) for ease of testing.
+     */
+    function simpleBoardString() public view returns (string memory) {
+        bytes memory out = new bytes(64);
+        for (uint8 i = 0; i < 64; i++) out[i] = board[i];
+        return string(out);
+    }
+}
