@@ -10,7 +10,7 @@ import { Chess } from 'chess.js';
 
 const FILES = ['a','b','c','d','e','f','g','h'];
 
-// Unicode pieces for a lightweight UI
+// Unicode pieces for a lightweight UI/1
 // NOTE: use proper JavaScript comment syntax (no `#` comments)
 // Piece themes
 const PIECE_UNICODE_CLASSIC = {
