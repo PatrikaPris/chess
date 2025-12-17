@@ -1,0 +1,62 @@
+// ThemeManager.java
+// Handles Light and Dark theme switching for the game
+// Compatible with Android (Java)
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import androidx.appcompat.app.AppCompatDelegate;
+
+public class ThemeManager {
+
+    private static final String PREFS_NAME = "game_settings";
+    private static final String KEY_THEME = "app_theme";
+
+    public static final int THEME_LIGHT = 0;
+    public static final int THEME_DARK = 1;
+
+    // Apply theme on app start
+    public static void applyTheme(Context context) {
+        int theme = getSavedTheme(context);
+
+        if (theme == THEME_DARK) {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES);
+        } else {
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO);
+        }
+    }
+
+    // Toggle theme and save preference
+    public static void toggleTheme(Context context) {
+        int currentTheme = getSavedTheme(context);
+        int newTheme = currentTheme == THEME_LIGHT ? THEME_DARK : THEME_LIGHT;
+
+        saveTheme(context, newTheme);
+        applyTheme(context);
+    }
+
+    // Save theme preference
+    private static void saveTheme(Context context, int theme) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        prefs.edit().putInt(KEY_THEME, theme).apply();
+    }
+
+    // Get saved theme preference
+    private static int getSavedTheme(Context context) {
+        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        return prefs.getInt(KEY_THEME, THEME_LIGHT);
+    }
+}
+
+/*
+Usage example inside Activity:
+
+@Override
+protected void onCreate(Bundle savedInstanceState) {
+    ThemeManager.applyTheme(this);
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.activity_main);
+}
+
+// Toggle theme on button press
+ThemeManager.toggleTheme(this);
+*/
