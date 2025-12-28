@@ -1,0 +1,58 @@
+// ColorRandomizer.java
+// Responsible for randomly assigning White and Black sides to players
+// Language: Java (Android-compatible)
+
+import java.util.Random;
+
+public class ColorRandomizer {
+
+    public enum Color {
+        WHITE,
+        BLACK
+    }
+
+    public static class Assignment {
+        public final Color playerOne;
+        public final Color playerTwo;
+
+        public Assignment(Color playerOne, Color playerTwo) {
+            this.playerOne = playerOne;
+            this.playerTwo = playerTwo;
+        }
+    }
+
+    private static final Random random = new Random();
+
+    // Randomly assigns colors to two players
+    public static Assignment assignColors() {
+        boolean playerOneIsWhite = random.nextBoolean();
+
+        if (playerOneIsWhite) {
+            return new Assignment(Color.WHITE, Color.BLACK);
+        } else {
+            return new Assignment(Color.BLACK, Color.WHITE);
+        }
+    }
+
+    // Utility helpers
+    public static boolean isWhite(Color color) {
+        return color == Color.WHITE;
+    }
+
+    public static boolean isBlack(Color color) {
+        return color == Color.BLACK;
+    }
+}
+
+/*
+Usage example:
+
+ColorRandomizer.Assignment assignment = ColorRandomizer.assignColors();
+
+ColorRandomizer.Color playerOneColor = assignment.playerOne;
+ColorRandomizer.Color playerTwoColor = assignment.playerTwo;
+
+if (playerOneColor == ColorRandomizer.Color.WHITE) {
+    // Player one starts the game
+}
+*/
