@@ -1,0 +1,75 @@
+// SeededColorRandomizer.java
+// Randomly assigns White and Black using a deterministic seed
+// Same seed => same result (fairness & reproducibility)
+
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Random;
+
+public class SeededColorRandomizer {
+
+    public enum Color {
+        WHITE,
+        BLACK
+    }
+
+    public static class Assignment {
+        public final Color playerOne;
+        public final Color playerTwo;
+        public final long seedUsed;
+
+        public Assignment(Color playerOne, Color playerTwo, long seedUsed) {
+            this.playerOne = playerOne;
+            this.playerTwo = playerTwo;
+            this.seedUsed = seedUsed;
+        }
+    }
+
+    // Main method: assigns colors using a deterministic seed
+    public static Assignment assignColors(String matchId, String playerOneId, String playerTwoId) {
+        long seed = generateSeed(matchId, playerOneId, playerTwoId);
+        Random random = new Random(seed);
+
+        boolean playerOneIsWhite = random.nextBoolean();
+
+        if (playerOneIsWhite) {
+            return new Assignment(Color.WHITE, Color.BLACK, seed);
+        } else {
+            return new Assignment(Color.BLACK, Color.WHITE, seed);
+        }
+    }
+
+    // Generates a deterministic seed from match + players
+    private static long generateSeed(String matchId, String playerOneId, String playerTwoId) {
+        try {
+            String input = matchId + "|" + playerOneId + "|" + playerTwoId;
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(input.getBytes());
+
+            // Convert first 8 bytes of hash to long
+            long seed = 0;
+            for (int i = 0; i < 8; i++) {
+                seed = (seed << 8) | (hash[i] & 0xff);
+            }
+            return seed;
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("SHA-256 not available", e);
+        }
+    }
+}
+
+/*
+Usage example:
+
+SeededColorRandomizer.Assignment assignment = SeededColorRandomizer.assignColors(
+    "match_123",
+    "player_wallet_A",
+    "player_wallet_B"
+);
+
+System.out.println("Seed used: " + assignment.seedUsed);
+System.out.println("Player One: " + assignment.playerOne);
+System.out.println("Player Two: " + assignment.playerTwo);
+
+// Same inputs => same result forever
+*/
