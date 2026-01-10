@@ -1,0 +1,79 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+// SeededColorRandomizer.sol
+// Deterministic color assignment for chess games
+// Fully compatible with the Java SeededColorRandomizer logic
+// Same inputs => same result (cross-platform fairness)
+
+contract SeededColorRandomizer {
+
+    enum Color {
+        WHITE,
+        BLACK
+    }
+
+    struct Assignment {
+        Color playerOne;
+        Color playerTwo;
+        uint256 seedUsed;
+    }
+
+    /// @notice Assign colors deterministically using match and player identifiers
+    /// @param matchId Unique match identifier (string)
+    /// @param playerOneId Player one identifier (wallet / user id)
+    /// @param playerTwoId Player two identifier (wallet / user id)
+    /// @return assignment Deterministic color assignment result
+    function assignColors(
+        string memory matchId,
+        string memory playerOneId,
+        string memory playerTwoId
+    ) public pure returns (Assignment memory assignment) {
+
+        uint256 seed = _generateSeed(matchId, playerOneId, playerTwoId);
+
+        // Use lowest bit to simulate Random(seed).nextBoolean()
+        bool playerOneIsWhite = (seed & 1) == 1;
+
+        if (playerOneIsWhite) {
+            assignment = Assignment(Color.WHITE, Color.BLACK, seed);
+        } else {
+            assignment = Assignment(Color.BLACK, Color.WHITE, seed);
+        }
+    }
+
+    /// @dev Generates deterministic seed using keccak256
+    /// Java SHA-256 -> first 8 bytes -> long
+    /// Solidity keccak256 -> uint256 -> lowest bit
+    function _generateSeed(
+        string memory matchId,
+        string memory playerOneId,
+        string memory playerTwoId
+    ) internal pure returns (uint256) {
+        return uint256(
+            keccak256(
+                abi.encodePacked(
+                    matchId,
+                    "|",
+                    playerOneId,
+                    "|",
+                    playerTwoId
+                )
+            )
+        );
+    }
+}
+
+/*
+USAGE EXAMPLE:
+
+SeededColorRandomizer.Assignment memory result = assignColors(
+    "match_123",
+    "0xPlayerOneWallet",
+    "0xPlayerTwoWallet"
+);
+
+// result.playerOne => WHITE or BLACK
+// result.playerTwo => opposite color
+// result.seedUsed  => deterministic seed for audit
+*/
