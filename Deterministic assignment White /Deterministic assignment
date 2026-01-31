@@ -1,0 +1,50 @@
+// === Player & Color Assignment (Deterministic) ===
+
+enum Color {
+    WHITE,
+    BLACK
+}
+
+address public playerWhite;
+address public playerBlack;
+
+bool public playersAssigned;
+
+event PlayersAssigned(address white, address black);
+
+/// @notice Assign colors deterministically using match + players
+/// @dev Can be called only once, before the game starts
+function assignPlayers(
+    string memory matchId,
+    address playerOne,
+    address playerTwo
+) external {
+    require(!playersAssigned, "Players already assigned");
+    require(playerOne != playerTwo, "Same address");
+
+    uint256 seed = uint256(
+        keccak256(
+            abi.encodePacked(
+                matchId,
+                "|",
+                playerOne,
+                "|",
+                playerTwo
+            )
+        )
+    );
+
+    bool playerOneIsWhite = (seed & 1) == 1;
+
+    if (playerOneIsWhite) {
+        playerWhite = playerOne;
+        playerBlack = playerTwo;
+    } else {
+        playerWhite = playerTwo;
+        playerBlack = playerOne;
+    }
+
+    playersAssigned = true;
+
+    emit PlayersAssigned(playerWhite, playerBlack);
+}
