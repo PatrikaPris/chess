@@ -1,0 +1,33 @@
+/// @notice Stake ERC20 tokens
+function stake(uint256 amount) external {
+    require(playersAssigned, "Players not assigned");
+    require(!gameStarted, "Game already started");
+    require(
+        msg.sender == playerWhite || msg.sender == playerBlack,
+        "Not a player"
+    );
+    require(stakes[msg.sender] == 0, "Already staked");
+    require(address(stakeToken) != address(0), "Token not set");
+
+    if (stakeAmount == 0) {
+        // First player defines stake size
+        stakeAmount = amount;
+        require(stakeAmount > 0, "Stake must be > 0");
+    } else {
+        // Second player must match stake
+        require(amount == stakeAmount, "Incorrect stake amount");
+    }
+
+    bool success = stakeToken.transferFrom(msg.sender, address(this), amount);
+    require(success, "Transfer failed");
+
+    stakes[msg.sender] = amount;
+
+    // Start game when both players staked
+    if (
+        stakes[playerWhite] == stakeAmount &&
+        stakes[playerBlack] == stakeAmount
+    ) {
+        gameStarted = true;
+    }
+}
