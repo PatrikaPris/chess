@@ -1,0 +1,12 @@
+function withdrawWinnings() external {
+    require(gameFinished, "Game not finished");
+    require(msg.sender == winner, "Not winner");
+
+    uint256 totalPot = stakes[playerWhite] + stakes[playerBlack];
+
+    stakes[playerWhite] = 0;
+    stakes[playerBlack] = 0;
+
+    bool success = stakeToken.transfer(winner, totalPot);
+    require(success, "Payout failed");
+}
