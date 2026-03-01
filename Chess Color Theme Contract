@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/// @title ChessThemeManager
+/// @notice Stores and manages light/dark color themes for a chess game
+contract ChessThemeManager {
+
+    struct Theme {
+        string whiteSquareColor;
+        string blackSquareColor;
+        string whitePieceColor;
+        string blackPieceColor;
+    }
+
+    // Active theme
+    Theme public activeTheme;
+
+    address public owner;
+
+    event ThemeUpdated(
+        string whiteSquareColor,
+        string blackSquareColor,
+        string whitePieceColor,
+        string blackPieceColor
+    );
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    constructor() {
+        owner = msg.sender;
+
+        // Default classic chess theme
+        activeTheme = Theme({
+            whiteSquareColor: "#F0D9B5",
+            blackSquareColor: "#B58863",
+            whitePieceColor: "#FFFFFF",
+            blackPieceColor: "#000000"
+        });
+    }
+
+    /// @notice Update full theme manually
+    function setTheme(
+        string memory _whiteSquare,
+        string memory _blackSquare,
+        string memory _whitePiece,
+        string memory _blackPiece
+    ) external onlyOwner {
+
+        activeTheme = Theme({
+            whiteSquareColor: _whiteSquare,
+            blackSquareColor: _blackSquare,
+            whitePieceColor: _whitePiece,
+            blackPieceColor: _blackPiece
+        });
+
+        emit ThemeUpdated(
+            _whiteSquare,
+            _blackSquare,
+            _whitePiece,
+            _blackPiece
+        );
+    }
+
+    /// @notice Switch to preset dark theme
+    function setDarkTheme() external onlyOwner {
+
+        activeTheme = Theme({
+            whiteSquareColor: "#3C3C3C",
+            blackSquareColor: "#1E1E1E",
+            whitePieceColor: "#E0E0E0",
+            blackPieceColor: "#000000"
+        });
+
+        emit ThemeUpdated(
+            "#3C3C3C",
+            "#1E1E1E",
+            "#E0E0E0",
+            "#000000"
+        );
+    }
+
+    /// @notice Switch to preset light theme
+    function setLightTheme() external onlyOwner {
+
+        activeTheme = Theme({
+            whiteSquareColor: "#FFFFFF",
+            blackSquareColor: "#DDDDDD",
+            whitePieceColor: "#222222",
+            blackPieceColor: "#000000"
+        });
+
+        emit ThemeUpdated(
+            "#FFFFFF",
+            "#DDDDDD",
+            "#222222",
+            "#000000"
+        );
+    }
+
+    /// @notice Read active theme
+    function getTheme() external view returns (
+        string memory,
+        string memory,
+        string memory,
+        string memory
+    ) {
+        return (
+            activeTheme.whiteSquareColor,
+            activeTheme.blackSquareColor,
+            activeTheme.whitePieceColor,
+            activeTheme.blackPieceColor
+        );
+    }
+}
