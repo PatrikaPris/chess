@@ -1,0 +1,141 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/// @notice Minimal ERC721 interface
+interface IERC721 {
+    function ownerOf(uint256 tokenId) external view returns (address);
+}
+
+/// @title PremiumThemeNFT
+/// @notice Theme manager where themes require NFT ownership
+contract PremiumThemeNFT {
+
+    struct Theme {
+        string whiteSquareColor;
+        string blackSquareColor;
+        string whitePieceColor;
+        string blackPieceColor;
+    }
+
+    address public owner;
+
+    IERC721 public themeNFT;
+
+    Theme public defaultTheme;
+
+    // tokenId => theme
+    mapping(uint256 => Theme) private nftThemes;
+
+    // tokenId => exists
+    mapping(uint256 => bool) public themeExists;
+
+    event ThemeCreated(
+        uint256 tokenId,
+        string whiteSquare,
+        string blackSquare,
+        string whitePiece,
+        string blackPiece
+    );
+
+    event DefaultThemeChanged(
+        string whiteSquare,
+        string blackSquare,
+        string whitePiece,
+        string blackPiece
+    );
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    constructor(address nftAddress) {
+        owner = msg.sender;
+        themeNFT = IERC721(nftAddress);
+
+        defaultTheme = Theme(
+            "#F0D9B5",
+            "#B58863",
+            "#FFFFFF",
+            "#000000"
+        );
+    }
+
+    /// set default theme
+    function setDefaultTheme(
+        string memory w1,
+        string memory b1,
+        string memory w2,
+        string memory b2
+    ) external onlyOwner {
+
+        defaultTheme = Theme(w1, b1, w2, b2);
+
+        emit DefaultThemeChanged(w1, b1, w2, b2);
+    }
+
+    /// create premium theme for NFT id
+    function createTheme(
+        uint256 tokenId,
+        string memory w1,
+        string memory b1,
+        string memory w2,
+        string memory b2
+    ) external onlyOwner {
+
+        nftThemes[tokenId] = Theme(
+            w1,
+            b1,
+            w2,
+            b2
+        );
+
+        themeExists[tokenId] = true;
+
+        emit ThemeCreated(
+            tokenId,
+            w1,
+            b1,
+            w2,
+            b2
+        );
+    }
+
+    /// get theme if user owns NFT
+    function getTheme(
+        address user,
+        uint256 tokenId
+    )
+        external
+        view
+        returns (
+            string memory,
+            string memory,
+            string memory,
+            string memory
+        )
+    {
+
+        if (
+            themeExists[tokenId] &&
+            themeNFT.ownerOf(tokenId) == user
+        ) {
+
+            Theme memory t = nftThemes[tokenId];
+
+            return (
+                t.whiteSquareColor,
+                t.blackSquareColor,
+                t.whitePieceColor,
+                t.blackPieceColor
+            );
+        }
+
+        return (
+            defaultTheme.whiteSquareColor,
+            defaultTheme.blackSquareColor,
+            defaultTheme.whitePieceColor,
+            defaultTheme.blackPieceColor
+        );
+    }
+}
