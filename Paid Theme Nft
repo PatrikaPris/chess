@@ -1,0 +1,130 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/// @title PaidThemeNFT
+/// @notice ERC721 NFT where each token unlocks a premium chess theme
+
+interface IERC20 {
+    function transferFrom(address from, address to, uint256 value) external returns (bool);
+}
+
+contract PaidThemeNFT {
+
+    // === Basic ERC721-like storage (simplified) ===
+
+    mapping(uint256 => address) private _owners;
+    mapping(address => uint256) private _balances;
+
+    uint256 public totalSupply;
+
+    // === Theme struct ===
+
+    struct Theme {
+        string whiteSquare;
+        string blackSquare;
+        string whitePiece;
+        string blackPiece;
+    }
+
+    // tokenId => theme
+    mapping(uint256 => Theme) public themes;
+
+    // === Payment config ===
+
+    address public owner;
+    IERC20 public paymentToken; // optional ERC20
+
+    uint256 public mintPrice;
+    bool public useERC20;
+
+    event Minted(address indexed user, uint256 tokenId);
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    constructor(uint256 _price) {
+        owner = msg.sender;
+        mintPrice = _price;
+    }
+
+    /// @notice Set ERC20 token for payments
+    function setPaymentToken(address token) external onlyOwner {
+        paymentToken = IERC20(token);
+        useERC20 = true;
+    }
+
+    /// @notice Mint theme NFT using ETH
+    function mintWithETH(
+        string memory w1,
+        string memory b1,
+        string memory w2,
+        string memory b2
+    ) external payable {
+        require(!useERC20, "Use ERC20 mint");
+        require(msg.value == mintPrice, "Wrong ETH amount");
+
+        _mint(msg.sender, w1, b1, w2, b2);
+    }
+
+    /// @notice Mint theme NFT using ERC20
+    function mintWithToken(
+        string memory w1,
+        string memory b1,
+        string memory w2,
+        string memory b2
+    ) external {
+        require(useERC20, "Token mint disabled");
+
+        bool success = paymentToken.transferFrom(msg.sender, address(this), mintPrice);
+        require(success, "Payment failed");
+
+        _mint(msg.sender, w1, b1, w2, b2);
+    }
+
+    /// @dev Internal mint logic
+    function _mint(
+        address to,
+        string memory w1,
+        string memory b1,
+        string memory w2,
+        string memory b2
+    ) internal {
+        totalSupply++;
+        uint256 tokenId = totalSupply;
+
+        _owners[tokenId] = to;
+        _balances[to]++;
+
+        themes[tokenId] = Theme(w1, b1, w2, b2);
+
+        emit Minted(to, tokenId);
+    }
+
+    /// @notice Get owner of NFT
+    function ownerOf(uint256 tokenId) public view returns (address) {
+        return _owners[tokenId];
+    }
+
+    /// @notice Get balance
+    function balanceOf(address user) public view returns (uint256) {
+        return _balances[user];
+    }
+
+    /// @notice Withdraw ETH
+    function withdrawETH() external onlyOwner {
+        payable(owner).transfer(address(this).balance);
+    }
+
+    /// @notice Withdraw ERC20
+    function withdrawToken() external onlyOwner {
+        uint256 balance = paymentTokenBalance();
+        paymentToken.transferFrom(address(this), owner, balance);
+    }
+
+    /// @dev helper (not standard)
+    function paymentTokenBalance() public view returns (uint256) {
+        return 0; // placeholder for simplicity
+    }
+}
