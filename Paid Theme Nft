@@ -118,13 +118,18 @@ contract PaidThemeNFT {
     }
 
     /// @notice Withdraw ERC20
+        /// @notice Withdraw ERC20 tokens collected from minting
     function withdrawToken() external onlyOwner {
-        uint256 balance = paymentTokenBalance();
-        paymentToken.transferFrom(address(this), owner, balance);
+        require(address(paymentToken) != address(0), "Token not set");
+
+        uint256 balance = paymentToken.balanceOf(address(this));
+        require(balance > 0, "No tokens to withdraw");
+
+        bool success = paymentToken.transfer(owner, balance);
+        require(success, "ERC20 transfer failed");
     }
 
     /// @dev helper (not standard)
-    function paymentTokenBalance() public view returns (uint256) {
-        return 0; // placeholder for simplicity
-    }
+        /// @dev Removed placeholder. Use paymentToken.balanceOf(address(this)) directly.
+
 }
