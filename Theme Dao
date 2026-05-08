@@ -1,0 +1,209 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+/// @title ThemeDAO
+/// @notice DAO voting system for chess theme changes
+/// @dev NFT holders can create and vote on theme proposals
+
+interface IERC721 {
+    function balanceOf(address owner) external view returns (uint256);
+}
+
+contract ThemeDAO {
+
+    struct ThemeProposal {
+        uint256 id;
+
+        string whiteSquareColor;
+        string blackSquareColor;
+        string whitePieceColor;
+        string blackPieceColor;
+
+        uint256 yesVotes;
+        uint256 noVotes;
+
+        uint256 endTime;
+
+        bool executed;
+    }
+
+    struct Theme {
+        string whiteSquareColor;
+        string blackSquareColor;
+        string whitePieceColor;
+        string blackPieceColor;
+    }
+
+    IERC721 public governanceNFT;
+
+    address public owner;
+
+    uint256 public proposalCount;
+    uint256 public votingDuration = 3 days;
+
+    Theme public activeTheme;
+
+    // proposalId => proposal
+    mapping(uint256 => ThemeProposal) public proposals;
+
+    // proposalId => voter => voted
+    mapping(uint256 => mapping(address => bool)) public hasVoted;
+
+    event ProposalCreated(
+        uint256 proposalId,
+        string whiteSquareColor,
+        string blackSquareColor,
+        string whitePieceColor,
+        string blackPieceColor,
+        uint256 endTime
+    );
+
+    event VoteCast(
+        uint256 proposalId,
+        address voter,
+        bool support,
+        uint256 votingPower
+    );
+
+    event ProposalExecuted(
+        uint256 proposalId
+    );
+
+    modifier onlyOwner() {
+        require(msg.sender == owner, "Not owner");
+        _;
+    }
+
+    modifier onlyNFTHolder() {
+        require(
+            governanceNFT.balanceOf(msg.sender) > 0,
+            "Must own governance NFT"
+        );
+        _;
+    }
+
+    constructor(address nftAddress) {
+        owner = msg.sender;
+
+        governanceNFT = IERC721(nftAddress);
+
+        // Default classic theme
+        activeTheme = Theme({
+            whiteSquareColor: "#F0D9B5",
+            blackSquareColor: "#B58863",
+            whitePieceColor: "#FFFFFF",
+            blackPieceColor: "#000000"
+        });
+    }
+
+    /// @notice Create new theme proposal
+    function createProposal(
+        string memory whiteSquare,
+        string memory blackSquare,
+        string memory whitePiece,
+        string memory blackPiece
+    ) external onlyNFTHolder {
+
+        proposalCount++;
+
+        proposals[proposalCount] = ThemeProposal({
+            id: proposalCount,
+            whiteSquareColor: whiteSquare,
+            blackSquareColor: blackSquare,
+            whitePieceColor: whitePiece,
+            blackPieceColor: blackPiece,
+            yesVotes: 0,
+            noVotes: 0,
+            endTime: block.timestamp + votingDuration,
+            executed: false
+        });
+
+        emit ProposalCreated(
+            proposalCount,
+            whiteSquare,
+            blackSquare,
+            whitePiece,
+            blackPiece,
+            block.timestamp + votingDuration
+        );
+    }
+
+    /// @notice Vote for proposal
+    function vote(
+        uint256 proposalId,
+        bool support
+    ) external onlyNFTHolder {
+
+        ThemeProposal storage proposal = proposals[proposalId];
+
+        require(block.timestamp < proposal.endTime, "Voting ended");
+        require(!hasVoted[proposalId][msg.sender], "Already voted");
+
+        uint256 votingPower = governanceNFT.balanceOf(msg.sender);
+
+        require(votingPower > 0, "No voting power");
+
+        hasVoted[proposalId][msg.sender] = true;
+
+        if (support) {
+            proposal.yesVotes += votingPower;
+        } else {
+            proposal.noVotes += votingPower;
+        }
+
+        emit VoteCast(
+            proposalId,
+            msg.sender,
+            support,
+            votingPower
+        );
+    }
+
+    /// @notice Execute successful proposal
+    function executeProposal(uint256 proposalId) external {
+
+        ThemeProposal storage proposal = proposals[proposalId];
+
+        require(block.timestamp >= proposal.endTime, "Voting still active");
+        require(!proposal.executed, "Already executed");
+        require(proposal.yesVotes > proposal.noVotes, "Proposal rejected");
+
+        proposal.executed = true;
+
+        activeTheme = Theme({
+            whiteSquareColor: proposal.whiteSquareColor,
+            blackSquareColor: proposal.blackSquareColor,
+            whitePieceColor: proposal.whitePieceColor,
+            blackPieceColor: proposal.blackPieceColor
+        });
+
+        emit ProposalExecuted(proposalId);
+    }
+
+    /// @notice Update voting duration
+    function setVotingDuration(uint256 duration) external onlyOwner {
+        require(duration >= 1 days, "Too short");
+        require(duration <= 30 days, "Too long");
+
+        votingDuration = duration;
+    }
+
+    /// @notice Read current active theme
+    function getActiveTheme()
+        external
+        view
+        returns (
+            string memory,
+            string memory,
+            string memory,
+            string memory
+        )
+    {
+        return (
+            activeTheme.whiteSquareColor,
+            activeTheme.blackSquareColor,
+            activeTheme.whitePieceColor,
+            activeTheme.blackPieceColor
+        );
+    }
+}
