@@ -1,0 +1,57 @@
+// WinAnimation.java
+// Final animation when a player wins the game
+// Android Java implementation
+
+import android.view.View;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.ScaleAnimation;
+import android.view.animation.AnimationSet;
+import android.widget.TextView;
+
+public class WinAnimation {
+
+    // Apply win animation to a view (for example: "White Wins" text)
+    public static void playWinAnimation(View view) {
+
+        // Fade-in effect
+        AlphaAnimation fadeIn = new AlphaAnimation(0f, 1f);
+        fadeIn.setDuration(500);
+
+        // Scale (zoom) effect
+        ScaleAnimation scale = new ScaleAnimation(
+                0.5f, 1.2f,
+                0.5f, 1.2f,
+                ScaleAnimation.RELATIVE_TO_SELF, 0.5f,
+                ScaleAnimation.RELATIVE_TO_SELF, 0.5f
+        );
+        scale.setDuration(500);
+
+        // Combine animations
+        AnimationSet animationSet = new AnimationSet(true);
+        animationSet.addAnimation(fadeIn);
+        animationSet.addAnimation(scale);
+
+        view.startAnimation(animationSet);
+    }
+
+    // Optional: highlight winner color
+    public static void setWinnerText(TextView textView, boolean isWhiteWinner) {
+
+        if (isWhiteWinner) {
+            textView.setText("White Wins");
+            textView.setTextColor(0xFFFFFFFF);
+        } else {
+            textView.setText("Black Wins");
+            textView.setTextColor(0xFF000000);
+        }
+    }
+}
+
+/*
+Usage example:
+
+TextView resultText = findViewById(R.id.resultText);
+
+WinAnimation.setWinnerText(resultText, true); // true = white wins
+WinAnimation.playWinAnimation(resultText);
+*/
