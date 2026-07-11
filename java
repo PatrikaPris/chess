@@ -258,3 +258,39 @@ FullScreenWinOverlay.show(
         startNewGame();
     }
 );
+// Winner zoom + bounce animation
+
+private void playWinnerAnimation(View view) {
+
+    view.setScaleX(0f);
+    view.setScaleY(0f);
+    view.setAlpha(0f);
+
+    view.animate()
+            .alpha(1f)
+            .scaleX(1.15f)
+            .scaleY(1.15f)
+            .setDuration(500)
+            .withEndAction(() ->
+                    view.animate()
+                            .scaleX(0.95f)
+                            .scaleY(0.95f)
+                            .setDuration(150)
+                            .withEndAction(() ->
+                                    view.animate()
+                                            .scaleX(1.05f)
+                                            .scaleY(1.05f)
+                                            .setDuration(120)
+                                            .withEndAction(() ->
+                                                    view.animate()
+                                                            .scaleX(1f)
+                                                            .scaleY(1f)
+                                                            .setDuration(120)
+                                                            .start()
+                                            )
+                                            .start()
+                            )
+                            .start()
+            )
+            .start();
+}
