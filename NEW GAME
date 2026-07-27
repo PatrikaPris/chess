@@ -1,0 +1,68 @@
+// Premium animation for the "NEW GAME" button
+
+private void playNewGameButtonAnimation(Button button) {
+
+    // Make button visible
+    button.setVisibility(View.VISIBLE);
+
+    // Initial state
+    button.setAlpha(0f);
+    button.setScaleX(0.5f);
+    button.setScaleY(0.5f);
+    button.setRotation(-8f);
+
+    // Entrance animation
+    button.animate()
+            .alpha(1f)
+            .scaleX(1.15f)
+            .scaleY(1.15f)
+            .rotation(0f)
+            .setDuration(500)
+            .withEndAction(() -> {
+
+                // Continuous pulse animation
+                ScaleAnimation pulse = new ScaleAnimation(
+                        1.0f, 1.08f,
+                        1.0f, 1.08f,
+                        ScaleAnimation.RELATIVE_TO_SELF, 0.5f,
+                        ScaleAnimation.RELATIVE_TO_SELF, 0.5f
+                );
+
+                pulse.setDuration(700);
+                pulse.setRepeatMode(ScaleAnimation.REVERSE);
+                pulse.setRepeatCount(ScaleAnimation.INFINITE);
+
+                button.startAnimation(pulse);
+
+            })
+            .start();
+}
+
+// Stop animation and start a new game
+
+newGameButton.setOnClickListener(v -> {
+
+    newGameButton.clearAnimation();
+
+    newGameButton.animate()
+            .scaleX(0.9f)
+            .scaleY(0.9f)
+            .setDuration(120)
+            .withEndAction(() -> {
+
+                newGameButton.animate()
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(120)
+                        .start();
+
+                startNewGame();
+
+            })
+            .start();
+
+});
+
+// Show animated button after the game ends
+
+playNewGameButtonAnimation(newGameButton);
