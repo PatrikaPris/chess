@@ -1,0 +1,87 @@
+// WinSoundManager.java
+// Manages the victory sound effect
+
+import android.content.Context;
+import android.media.MediaPlayer;
+
+public class WinSoundManager {
+
+    private static MediaPlayer mediaPlayer;
+    private static boolean soundEnabled = true;
+
+    // Play the victory sound
+    public static void playWinSound(Context context) {
+
+        if (!soundEnabled) {
+            return;
+        }
+
+        stop();
+
+        mediaPlayer = MediaPlayer.create(
+                context,
+                R.raw.win_sound
+        );
+
+        if (mediaPlayer != null) {
+
+            mediaPlayer.setOnCompletionListener(player -> {
+                player.release();
+                mediaPlayer = null;
+            });
+
+            mediaPlayer.start();
+        }
+    }
+
+    // Enable or disable sound
+    public static void setSoundEnabled(boolean enabled) {
+        soundEnabled = enabled;
+
+        if (!enabled) {
+            stop();
+        }
+    }
+
+    // Check current sound state
+    public static boolean isSoundEnabled() {
+        return soundEnabled;
+    }
+
+    // Stop current sound
+    public static void stop() {
+
+        if (mediaPlayer != null) {
+
+            if (mediaPlayer.isPlaying()) {
+                mediaPlayer.stop();
+            }
+
+            mediaPlayer.release();
+            mediaPlayer = null;
+        }
+    }
+}
+
+// Play victory animation and sound
+public void onGameWon(boolean whiteWinner) {
+
+    if (whiteWinner) {
+        resultText.setText("🏆 WHITE PLAYER WINS 🏆");
+    } else {
+        resultText.setText("🏆 BLACK PLAYER WINS 🏆");
+    }
+
+    resultText.setVisibility(View.VISIBLE);
+
+    playWinnerAnimation(resultText);
+
+    WinSoundManager.playWinSound(this);
+
+    playNewGameButtonAnimation(newGameButton);
+}
+
+WinSoundManager.setSoundEnabled(false);
+
+WinSoundManager.setSoundEnabled(true);
+
