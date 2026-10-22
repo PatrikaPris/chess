@@ -32,7 +32,11 @@ public class ButtonAnimationActivity extends AppCompatActivity {
             startNewGame();
         });
     }
+Button connectWalletButton = findViewById(R.id.connectWalletButton);
 
+connectWalletButton.setOnClickListener(v -> {
+    // Connect EVM wallet
+});
     // Call this method when a player wins
     public void onGameWon(boolean whiteWinner) {
 
