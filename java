@@ -314,4 +314,8 @@ copyWalletButton.setOnClickListener(v -> {
     } else {
         Toast.makeText(this, "Connect wallet first", Toast.LENGTH_SHORT).show();
     }
+    import android.content.ClipData;
+import android.content.ClipboardManager;
+import android.widget.Button;
+import android.widget.Toast;
 });
