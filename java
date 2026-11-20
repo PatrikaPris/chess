@@ -298,3 +298,20 @@ private void playWinnerAnimation(View view) {
             )
             .start();
 }
+Button copyWalletButton = findViewById(R.id.copyWalletButton);
+
+copyWalletButton.setOnClickListener(v -> {
+    if (walletAddress != null && !walletAddress.isEmpty()) {
+        ClipboardManager clipboard =
+            (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+
+        ClipData clip = ClipData.newPlainText(
+            "EVM Wallet Address", walletAddress
+        );
+
+        clipboard.setPrimaryClip(clip);
+        Toast.makeText(this, "Address copied", Toast.LENGTH_SHORT).show();
+    } else {
+        Toast.makeText(this, "Connect wallet first", Toast.LENGTH_SHORT).show();
+    }
+});
